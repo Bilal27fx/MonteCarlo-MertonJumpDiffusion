@@ -82,18 +82,24 @@ class display_option:
         self.k_values = k_values
         self.T_values = T_values
 
-    def calculate_option_prices(self, S0, r, sigma, T, k_values, n_simulations):
+    def calculate_option_prices(self, S0, r, sigma, T, k_values, n_simulations, option_type="call"):
         prices = np.zeros((len(k_values), len(T)))
         for i, T_val in enumerate(T):
             for j, k_val in enumerate(k_values):
-                bs_simulator = MonteCarloSimulator_BlackScholes(S0, r, sigma, T_val, k_val, n_simulations)
-                call_price = bs_simulator.Call_Price_BlackScholes()
-                prices[j, i] = call_price
+                # Choisir la méthode de simulation en fonction de l'option (Black-Scholes ou Merton Jump Diffusion)
+                if option_type == "call" or option_type == "put":
+                    bs_simulator = MonteCarloSimulator_BlackScholes(S0, r, sigma, T_val, k_val, n_simulations)
+                    if option_type == "call":
+                        option_price = bs_simulator.Call_Price_BlackScholes()
+                    else:
+                        option_price = bs_simulator.Put_Price_BlackScholes()
+                prices[j, i] = option_price
         return prices
 
     def display_option_simulation(self):
         # Streamlit interface configuration
         st.title("Monte Carlo Simulation for Options")
+        
         # Sidebar for Black-Scholes parameters
         st.sidebar.header("Black-Scholes Option Parameters")
         S0 = st.sidebar.slider("Initial Price", 50, 200, 100)
@@ -101,7 +107,7 @@ class display_option:
         sigma = st.sidebar.slider("Volatility", 0.0, 1.0, 0.2)
         T = st.sidebar.slider("Maturity", 0.1, 10.0, 1.0)
         k = st.sidebar.slider("Strike Price", 50, 200, 100)
-        n_simulations = st.sidebar.slider("Number of Simulations", 1000, 10000, 10000)
+        n_simulations = st.sidebar.slider("Number of Simulations", 1000, 3000, 1000)
 
         # Sidebar for Merton Jump Diffusion parameters
         st.sidebar.header("Merton Jump Diffusion Option Parameters")
@@ -114,62 +120,127 @@ class display_option:
         bs_simulator = MonteCarloSimulator_BlackScholes(S0, r, sigma, T, k, n_simulations)
         mj_simulator = MonteCarloSimulator_MertonJumpDiffusion(S0, r, sigma, T, k, n_simulations, lambda_jump, mu_jump, sigma_jump, n_steps)
 
-        # Calculate option prices
+        # Calculate option prices for both methods
         call_price_bs = bs_simulator.Call_Price_BlackScholes()
         put_price_bs = bs_simulator.Put_Price_BlackScholes()
         call_price_mj = mj_simulator.Call_Price_MertonJumpDiffusion()
         put_price_mj = mj_simulator.Put_Price_MertonJumpDiffusion()
 
-        # Display the results with colored squares
-        st.subheader("Black-Scholes Option Price")
-        st.markdown(f"""
-            <div style="display: flex; justify-content: center; gap: 30px; margin-top: 20px;">
-                <div style="width: 180px; height: 100px; background-color: #4CAF50; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-                    Call: {call_price_bs:.2f}
-                </div>
-                <div style="width: 180px; height: 100px; background-color: #f44336; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-                    Put: {put_price_bs:.2f}
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        # Affichage des résultats dans 2 colonnes
+        st.subheader("Option Prices for Black-Scholes Model")
 
-        st.subheader("Merton Jump Diffusion Option Price")
-        st.markdown(f"""
-            <div style="display: flex; justify-content: center; gap: 30px; margin-top: 20px;">
-                <div style="width: 180px; height: 100px; background-color: #2196F3; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-                    Call: {call_price_mj:.2f}
-                </div>
-                <div style="width: 180px; height: 100px; background-color: #FFC107; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-                    Put: {put_price_mj:.2f}
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        # Affichage des prix sous forme de carrés colorés
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(
+                f'<div style="background-color: #4CAF50; color: white; padding: 10px; border-radius: 8px; text-align: center;">Call Price: <strong>{call_price_bs:.2f}</strong></div>',
+                unsafe_allow_html=True)
+        with col2:
+            st.markdown(
+                f'<div style="background-color: #f44336; color: white; padding: 10px; border-radius: 8px; text-align: center;">Put Price: <strong>{put_price_bs:.2f}</strong></div>',
+                unsafe_allow_html=True)
 
-        # 3D Plot with Plotly for option prices
-        st.subheader("Interactive 3D Option Price Visualization")
+        # Affichage des graphiques Black-Scholes avec taille réduite
+        col1, col2 = st.columns(2)
+        with col1:
+            option_prices_bs_call = self.calculate_option_prices(self.S0, self.r, self.sigma, self.T_values, self.k_values, self.n_simulations, option_type="call")
+            fig_bs_call = go.Figure(data=[go.Surface(
+                z=option_prices_bs_call,
+                x=self.k_values,  # x is Strike Price (K)
+                y=self.T_values,  # y is Time to Maturity (T)
+                colorscale='Jet',  # Heatmap color scale
+                colorbar=dict(title='Option Price'),
+            )])
 
-        # Calculate option prices for 3D plot
-        option_prices = self.calculate_option_prices(self.S0, self.r, self.sigma, self.T_values, self.k_values, self.n_simulations)
+            fig_bs_call.update_layout(
+                scene=dict(
+                    xaxis_title='Strike Price (K)',
+                    yaxis_title='Time to Maturity (T)',
+                    zaxis_title='Option Price (Call)'
+                ),
+                height=500,  # Taille réduite
+                width=500   # Taille réduite
+            )
 
-        # Create an interactive 3D plot with Plotly
-        fig = go.Figure(data=[go.Surface(
-            z=option_prices,
-            x=self.k_values,  # x is Strike Price (K)
-            y=self.T_values,  # y is Time to Maturity (T)
-            colorscale='Jet',  # Heatmap color scale
-            colorbar=dict(title='Option Price'),
-        )])
+            st.plotly_chart(fig_bs_call, use_container_width=True)
 
-        # Customize the layout
-        fig.update_layout(
-            title="3D Option Price Surface (Black-Scholes)",
-            scene=dict(
-                xaxis_title='Strike Price (K)',
-                yaxis_title='Time to Maturity (T)',
-                zaxis_title='Option Price (Call)'
-            ),
-            height=800
-        )
+        with col2:
+            option_prices_bs_put = self.calculate_option_prices(self.S0, self.r, self.sigma, self.T_values, self.k_values, self.n_simulations, option_type="put")
+            fig_bs_put = go.Figure(data=[go.Surface(
+                z=option_prices_bs_put,
+                x=self.k_values,  # x is Strike Price (K)
+                y=self.T_values,  # y is Time to Maturity (T)
+                colorscale='Jet',  # Heatmap color scale
+                colorbar=dict(title='Option Price'),
+            )])
 
-        # Display the Plotly plot in Streamlit
-        st.plotly_chart(fig)
+            fig_bs_put.update_layout(
+                scene=dict(
+                    xaxis_title='Strike Price (K)',
+                    yaxis_title='Time to Maturity (T)',
+                    zaxis_title='Option Price (Put)'
+                ),
+                height=500,  # Taille réduite
+                width=500   # Taille réduite
+            )
+
+            st.plotly_chart(fig_bs_put, use_container_width=True)
+
+        st.subheader("Option Prices for Merton Jump Diffusion Model")
+
+        # Affichage des prix sous forme de carrés colorés
+        col3, col4 = st.columns(2)
+        with col3:
+            st.markdown(
+                f'<div style="background-color: #2196F3; color: white; padding: 10px; border-radius: 8px; text-align: center;">Call Price: <strong>{call_price_mj:.2f}</strong></div>',
+                unsafe_allow_html=True)
+        with col4:
+            st.markdown(
+                f'<div style="background-color: #FF9800; color: white; padding: 10px; border-radius: 8px; text-align: center;">Put Price: <strong>{put_price_mj:.2f}</strong></div>',
+                unsafe_allow_html=True)
+
+        # Affichage des graphiques Merton Jump Diffusion avec taille réduite
+        col3, col4 = st.columns(2)
+        with col3:
+            option_prices_mj_call = self.calculate_option_prices(self.S0, self.r, self.sigma, self.T_values, self.k_values, self.n_simulations, option_type="call")
+            fig_mj_call = go.Figure(data=[go.Surface(
+                z=option_prices_mj_call,
+                x=self.k_values,  # x is Strike Price (K)
+                y=self.T_values,  # y is Time to Maturity (T)
+                colorscale='Jet',  # Heatmap color scale
+                colorbar=dict(title='Option Price'),
+            )])
+
+            fig_mj_call.update_layout(
+                scene=dict(
+                    xaxis_title='Strike Price (K)',
+                    yaxis_title='Time to Maturity (T)',
+                    zaxis_title='Option Price (Call)'
+                ),
+                height=500,  # Taille réduite
+                width=500   # Taille réduite
+            )
+
+            st.plotly_chart(fig_mj_call, use_container_width=True)
+
+        with col4:
+            option_prices_mj_put = self.calculate_option_prices(self.S0, self.r, self.sigma, self.T_values, self.k_values, self.n_simulations, option_type="put")
+            fig_mj_put = go.Figure(data=[go.Surface(
+                z=option_prices_mj_put,
+                x=self.k_values,  # x is Strike Price (K)
+                y=self.T_values,  # y is Time to Maturity (T)
+                colorscale='Jet',  # Heatmap color scale
+                colorbar=dict(title='Option Price'),
+            )])
+
+            fig_mj_put.update_layout(
+                scene=dict(
+                    xaxis_title='Strike Price (K)',
+                    yaxis_title='Time to Maturity (T)',
+                    zaxis_title='Option Price (Put)'
+                ),
+                height=500,  # Taille réduite
+                width=500   # Taille réduite
+            )
+
+            st.plotly_chart(fig_mj_put, use_container_width=True)
