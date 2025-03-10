@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
-import plotly.graph_objects as go
 
 class MonteCarloSimulator_BlackScholes:
     def __init__(self, S0, r, sigma, T, k, n_simulations):
@@ -69,12 +68,12 @@ class MonteCarloSimulator_MertonJumpDiffusion:
 
 class display_option:
     def __init__(self, S0, r, sigma, T, k, n_simulations, lambda_jump, mu_jump, sigma_jump, n_pas, k_values, T_values):
-        self.S0 = S0  # Prix initial de l'actif
-        self.r = r  # Taux sans risque
-        self.sigma = sigma  # Volatilité
-        self.T = T  # Maturité
-        self.k = k  # Prix d'exercice (strike)
-        self.n_simulations = n_simulations  # Nombre de simulations
+        self.S0 = S0
+        self.r = r
+        self.sigma = sigma
+        self.T = T
+        self.k = k
+        self.n_simulations = n_simulations
         self.lambda_jump = lambda_jump
         self.mu_jump = mu_jump
         self.sigma_jump = sigma_jump
@@ -86,7 +85,6 @@ class display_option:
         prices = np.zeros((len(k_values), len(T)))
         for i, T_val in enumerate(T):
             for j, k_val in enumerate(k_values):
-                # Choisir la méthode de simulation en fonction de l'option (Black-Scholes ou Merton Jump Diffusion)
                 if option_type == "call" or option_type == "put":
                     bs_simulator = MonteCarloSimulator_BlackScholes(S0, r, sigma, T_val, k_val, n_simulations)
                     if option_type == "call":
@@ -95,6 +93,34 @@ class display_option:
                         option_price = bs_simulator.Put_Price_BlackScholes()
                 prices[j, i] = option_price
         return prices
+    
+    def calculate_option_prices_MJD(self, S0, r, sigma, T, k_values, n_simulations, lambda_jump, mu_jump, sigma_jump, n_pas, option_type="call"):
+        prices = np.zeros((len(k_values), len(T)))  # Initialize an array to store option prices
+
+        # Iterate over each combination of T (maturity) and k (strike price)
+        for i, T_val in enumerate(T):
+            for j, k_val in enumerate(k_values):
+                if option_type == "call" or option_type == "put":
+                    # Use the Merton Jump Diffusion simulator
+                    mj_simulator = MonteCarloSimulator_MertonJumpDiffusion(S0, r, sigma, T_val, k_val, n_simulations, lambda_jump, mu_jump, sigma_jump, n_pas)
+                    
+                    # Depending on the option type, calculate the price
+                    if option_type == "call":
+                        option_price = mj_simulator.Call_Price_MertonJumpDiffusion()
+                    else:
+                        option_price = mj_simulator.Put_Price_MertonJumpDiffusion()
+
+                    # Vérification de la validité de l'option price
+                    if np.isnan(option_price) or np.isinf(option_price):
+                        st.warning(f"Option price for K={k_val}, T={T_val} is invalid (NaN or Inf).")
+                        option_price = 0  # Assign a default value if the price is invalid
+
+                    # Store the calculated option price in the prices array (corrected indices)
+                    prices[j, i] = option_price  # j for k_values, i for T-values
+
+        return prices
+
+
 
     def display_option_simulation(self):
         # Streamlit interface configuration
@@ -140,51 +166,41 @@ class display_option:
                 f'<div style="background-color: #f44336; color: white; padding: 10px; border-radius: 8px; text-align: center;">Put Price: <strong>{put_price_bs:.2f}</strong></div>',
                 unsafe_allow_html=True)
 
-        # Affichage des graphiques Black-Scholes avec taille réduite
+       # Affichage des graphiques avec Matplotlib
         col1, col2 = st.columns(2)
         with col1:
             option_prices_bs_call = self.calculate_option_prices(self.S0, self.r, self.sigma, self.T_values, self.k_values, self.n_simulations, option_type="call")
-            fig_bs_call = go.Figure(data=[go.Surface(
-                z=option_prices_bs_call,
-                x=self.k_values,  # x is Strike Price (K)
-                y=self.T_values,  # y is Time to Maturity (T)
-                colorscale='Jet',  # Heatmap color scale
-                colorbar=dict(title='Option Price'),
-            )])
-
-            fig_bs_call.update_layout(
-                scene=dict(
-                    xaxis_title='Strike Price (K)',
-                    yaxis_title='Time to Maturity (T)',
-                    zaxis_title='Option Price (Call)'
-                ),
-                height=500,  # Taille réduite
-                width=500   # Taille réduite
-            )
-
-            st.plotly_chart(fig_bs_call, use_container_width=True)
+            fig_bs_call = plt.figure(figsize=(10, 7))  # Augmenter la taille de la figure
+            ax = fig_bs_call.add_subplot(111, projection='3d')
+            X, Y = np.meshgrid(self.k_values, self.T_values)
+            surf = ax.plot_surface(X, Y, option_prices_bs_call, cmap='jet')
+            ax.set_xlabel('Strike Price (K)', color='white')
+            ax.set_ylabel('Time to Maturity (T)', color='white')
+            ax.set_zlabel('Option Price (Call)', color='white')
+            ax.set_facecolor('grey')  # Fond sombre du graphique
+            fig_bs_call.patch.set_facecolor('grey')  # Fond sombre global de la figure
+            ax.set_zlim(min(option_prices_bs_call.min(), 0), option_prices_bs_call.max())  # Ajuster les limites de l'axe Z
+            ax.view_init(azim=30, elev=20)  # Changer l'angle de vue
+            plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)  # Ajuster les marges pour un meilleur affichage
+            fig_bs_call.colorbar(surf, shrink=0.5, aspect=5)  # Ajouter la jauge de couleur
+            st.pyplot(fig_bs_call)
 
         with col2:
             option_prices_bs_put = self.calculate_option_prices(self.S0, self.r, self.sigma, self.T_values, self.k_values, self.n_simulations, option_type="put")
-            fig_bs_put = go.Figure(data=[go.Surface(
-                z=option_prices_bs_put,
-                x=self.k_values,  # x is Strike Price (K)
-                y=self.T_values,  # y is Time to Maturity (T)
-                colorscale='Jet',  # Heatmap color scale
-                colorbar=dict(title='Option Price'),
-            )])
-
-            fig_bs_put.update_layout(
-                scene=dict(
-                    xaxis_title='Strike Price (K)',
-                    yaxis_title='Time to Maturity (T)',
-                    zaxis_title='Option Price (Put)'
-                ),
-                height=500,  # Taille réduite
-                width=500   # Taille réduite
-            )
-
-            st.plotly_chart(fig_bs_put, use_container_width=True)
+            fig_bs_put = plt.figure(figsize=(10, 7))  # Augmenter la taille de la figure
+            ax = fig_bs_put.add_subplot(111, projection='3d')
+            X, Y = np.meshgrid(self.k_values, self.T_values)
+            surf = ax.plot_surface(X, Y, option_prices_bs_put, cmap='jet')
+            ax.set_xlabel('Strike Price (K)', color='white')
+            ax.set_ylabel('Time to Maturity (T)', color='white')
+            ax.set_zlabel('Option Price (Put)', color='white')
+            ax.set_facecolor('grey')  # Fond sombre du graphique
+            fig_bs_put.patch.set_facecolor('grey')  # Fond sombre global de la figure
+            ax.set_zlim(min(option_prices_bs_put.min(), 0), option_prices_bs_put.max())  # Ajuster les limites de l'axe Z
+            ax.view_init(azim=30, elev=20)  # Changer l'angle de vue
+            plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)  # Ajuster les marges pour un meilleur affichage
+            fig_bs_put.colorbar(surf, shrink=0.5, aspect=5)  # Ajouter la jauge de couleur
+            st.pyplot(fig_bs_put)
 
         st.subheader("Option Prices for Merton Jump Diffusion Model")
 
@@ -199,48 +215,38 @@ class display_option:
                 f'<div style="background-color: #FF9800; color: white; padding: 10px; border-radius: 8px; text-align: center;">Put Price: <strong>{put_price_mj:.2f}</strong></div>',
                 unsafe_allow_html=True)
 
-        # Affichage des graphiques Merton Jump Diffusion avec taille réduite
+        # Affichage des graphiques Merton Jump Diffusion avec Matplotlib
         col3, col4 = st.columns(2)
         with col3:
-            option_prices_mj_call = self.calculate_option_prices(self.S0, self.r, self.sigma, self.T_values, self.k_values, self.n_simulations, option_type="call")
-            fig_mj_call = go.Figure(data=[go.Surface(
-                z=option_prices_mj_call,
-                x=self.k_values,  # x is Strike Price (K)
-                y=self.T_values,  # y is Time to Maturity (T)
-                colorscale='Jet',  # Heatmap color scale
-                colorbar=dict(title='Option Price'),
-            )])
-
-            fig_mj_call.update_layout(
-                scene=dict(
-                    xaxis_title='Strike Price (K)',
-                    yaxis_title='Time to Maturity (T)',
-                    zaxis_title='Option Price (Call)'
-                ),
-                height=500,  # Taille réduite
-                width=500   # Taille réduite
-            )
-
-            st.plotly_chart(fig_mj_call, use_container_width=True)
+            option_prices_mj_call = self.calculate_option_prices_MJD(self.S0, self.r, self.sigma, self.T_values, self.k_values, self.n_simulations, self.lambda_jump, self.mu_jump, self.sigma_jump,self.n_pas,option_type="call")
+            fig_mj_call = plt.figure(figsize=(10, 7))  # Augmenter la taille de la figure
+            ax = fig_mj_call.add_subplot(111, projection='3d')
+            X, Y = np.meshgrid(self.k_values, self.T_values)
+            surf = ax.plot_surface(X, Y, option_prices_mj_call, cmap='jet')
+            ax.set_xlabel('Strike Price (K)', color='white')
+            ax.set_ylabel('Time to Maturity (T)', color='white')
+            ax.set_zlabel('Option Price (Call)', color='white')
+            ax.set_facecolor('grey')  # Fond sombre du graphique
+            fig_mj_call.patch.set_facecolor('grey')  # Fond sombre global de la figure
+            ax.set_zlim(min(option_prices_mj_call.min(), 0), option_prices_mj_call.max())  # Ajuster les limites de l'axe Z
+            ax.view_init(azim=30, elev=20)  # Changer l'angle de vue
+            plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)  # Ajuster les marges pour un meilleur affichage
+            fig_mj_call.colorbar(surf, shrink=0.5, aspect=5)  # Ajouter la jauge de couleur
+            st.pyplot(fig_mj_call)
 
         with col4:
-            option_prices_mj_put = self.calculate_option_prices(self.S0, self.r, self.sigma, self.T_values, self.k_values, self.n_simulations, option_type="put")
-            fig_mj_put = go.Figure(data=[go.Surface(
-                z=option_prices_mj_put,
-                x=self.k_values,  # x is Strike Price (K)
-                y=self.T_values,  # y is Time to Maturity (T)
-                colorscale='Jet',  # Heatmap color scale
-                colorbar=dict(title='Option Price'),
-            )])
-
-            fig_mj_put.update_layout(
-                scene=dict(
-                    xaxis_title='Strike Price (K)',
-                    yaxis_title='Time to Maturity (T)',
-                    zaxis_title='Option Price (Put)'
-                ),
-                height=500,  # Taille réduite
-                width=500   # Taille réduite
-            )
-
-            st.plotly_chart(fig_mj_put, use_container_width=True)
+            option_prices_mj_put = self.calculate_option_prices_MJD(self.S0, self.r, self.sigma, self.T_values, self.k_values, self.n_simulations,self.lambda_jump, self.mu_jump, self.sigma_jump,self.n_pas,option_type="put")
+            fig_mj_put = plt.figure(figsize=(10, 7))  # Augmenter la taille de la figure
+            ax = fig_mj_put.add_subplot(111, projection='3d')
+            X, Y = np.meshgrid(self.k_values, self.T_values)
+            surf = ax.plot_surface(X, Y, option_prices_mj_put, cmap='jet')
+            ax.set_xlabel('Strike Price (K)', color='white')
+            ax.set_ylabel('Time to Maturity (T)', color='white')
+            ax.set_zlabel('Option Price (Put)', color='white')
+            ax.set_facecolor('grey')  # Fond sombre du graphique
+            fig_mj_put.patch.set_facecolor('grey')  # Fond sombre global de la figure
+            ax.set_zlim(min(option_prices_mj_put.min(), 0), option_prices_mj_put.max())  # Ajuster les limites de l'axe Z
+            ax.view_init(azim=30, elev=20)  # Changer l'angle de vue
+            plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)  # Ajuster les marges pour un meilleur affichage
+            fig_mj_put.colorbar(surf, shrink=0.5, aspect=5)  # Ajouter la jauge de couleur
+            st.pyplot(fig_mj_put)

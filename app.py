@@ -1,6 +1,6 @@
 import streamlit as st
 import numpy as np
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 from Simulation import display_option  # Si la classe est dans un fichier externe, importez-la
 
 # Main function to call display_option
